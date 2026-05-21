@@ -1,0 +1,6 @@
+/mihomo-yaml-exporter
+/mihomo-yaml-exporter.exe
+*.exe
+.idea/
+.vscode/
+.env

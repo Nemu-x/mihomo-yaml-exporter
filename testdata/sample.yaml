@@ -1,0 +1,16 @@
+proxies:
+  - name: test-google-dns
+    type: vless
+    server: 8.8.8.8
+    port: 53
+  - name: test-dead-port
+    type: vless
+    server: 127.0.0.1
+    port: 1
+
+proxy-groups:
+  - name: Auto
+    type: url-test
+    proxies:
+      - test-google-dns
+      - test-dead-port
