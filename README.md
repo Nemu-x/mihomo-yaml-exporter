@@ -51,6 +51,7 @@ docker run -d \
 
 ## HTTP endpoints
 
+- `GET /` or `GET /ui` — simple web dashboard (no Grafana required)
 - `GET /metrics` — Prometheus metrics
 - `GET /health` — JSON status (`ok` / `degraded`)
 - `GET /proxies` — JSON list of proxies with last check results

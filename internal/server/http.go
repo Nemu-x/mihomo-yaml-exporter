@@ -19,6 +19,8 @@ func New(eng *engine.Engine) *HTTPServer {
 
 func (s *HTTPServer) Handler() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("/", s.handleWeb)
+	mux.HandleFunc("/ui", s.handleWeb)
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/proxies", s.handleProxies)
