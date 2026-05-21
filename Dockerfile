@@ -9,7 +9,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -trimpath -ldflags="-s -w" -o /mihomo-yaml
 FROM alpine:3.20
 ARG MIHOMO_VERSION=v1.19.25
 RUN apk add --no-cache ca-certificates wget \
-    && wget -qO- "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-amd64-${MIHOMO_VERSION#v}.gz" \
+    && wget -qO- "https://github.com/MetaCubeX/mihomo/releases/download/${MIHOMO_VERSION}/mihomo-linux-amd64-${MIHOMO_VERSION}.gz" \
     | gunzip > /usr/local/bin/mihomo \
     && chmod +x /usr/local/bin/mihomo \
     && apk del wget
