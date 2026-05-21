@@ -9,26 +9,32 @@ import (
 	"github.com/nemu-x/mihomo-yaml-exporter/internal/checker"
 	"github.com/nemu-x/mihomo-yaml-exporter/internal/config"
 	"github.com/nemu-x/mihomo-yaml-exporter/internal/metrics"
+	"github.com/nemu-x/mihomo-yaml-exporter/internal/mihomo"
 	"github.com/nemu-x/mihomo-yaml-exporter/internal/subscription"
 )
 
 type Snapshot struct {
-	Results          []subscription.CheckResult
-	ProxiesTotal     int
-	ProxiesOnline    int
-	LastCheck        time.Time
-	SubLoadOK        bool
-	SubLastSuccess   time.Time
-	LastSubError     string
-	HasProxies       bool
-	LastCheckFailed  bool
+	Results         []subscription.CheckResult
+	ProxiesTotal    int
+	ProxiesOnline   int
+	LastCheck       time.Time
+	SubLoadOK       bool
+	SubLastSuccess  time.Time
+	LastSubError    string
+	HasProxies      bool
+	LastCheckFailed bool
+	CheckInterval   time.Duration
+	CheckInProgress bool
+	CheckMode       string
 }
 
 type Engine struct {
-	cfg     config.Config
-	fetcher *subscription.Fetcher
-	checker *checker.TCPChecker
-	metrics *metrics.Registry
+	cfg       config.Config
+	fetcher   *subscription.Fetcher
+	checker   checker.Checker
+	mihomo    *mihomo.Process
+	metrics   *metrics.Registry
+	checkMode string
 
 	mu              sync.RWMutex
 	proxies         []subscription.Proxy
@@ -39,21 +45,43 @@ type Engine struct {
 	lastCheck       time.Time
 	hasProxies      bool
 	lastCheckFailed bool
+	checking        bool
+	refreshCh chan struct{}
 }
 
 func New(cfg config.Config, reg *metrics.Registry) *Engine {
-	return &Engine{
-		cfg:     cfg,
-		fetcher: subscription.NewFetcher(cfg.SubscriptionURL),
-		checker: &checker.TCPChecker{
+	e := &Engine{
+		cfg:       cfg,
+		fetcher:   subscription.NewFetcher(cfg.SubscriptionURL),
+		metrics:   reg,
+		checkMode: cfg.CheckMode,
+		refreshCh: make(chan struct{}, 1),
+	}
+
+	switch cfg.CheckMode {
+	case "mihomo":
+		proc := mihomo.NewProcess(
+			cfg.MihomoBinary,
+			cfg.MihomoConfigDir,
+			cfg.MihomoController,
+			cfg.MihomoSecret,
+		)
+		e.mihomo = proc
+		e.checker = mihomo.NewDelayChecker(cfg, proc)
+	default:
+		e.checker = &checker.TCPChecker{
 			Timeout:     cfg.CheckTimeout,
 			Concurrency: cfg.CheckConcurrency,
-		},
-		metrics: reg,
+			Retries:     cfg.CheckRetries,
+			TLSPorts:    cfg.TLSPorts,
+		}
 	}
+
+	return e
 }
 
 func (e *Engine) Run(ctx context.Context) {
+	defer e.shutdown()
 	e.tick(ctx)
 
 	ticker := time.NewTicker(e.cfg.CheckInterval)
@@ -65,20 +93,53 @@ func (e *Engine) Run(ctx context.Context) {
 			return
 		case <-ticker.C:
 			e.tick(ctx)
+		case <-e.refreshCh:
+			e.tick(ctx)
 		}
 	}
 }
 
+func (e *Engine) shutdown() {
+	if e.mihomo != nil {
+		_ = e.mihomo.Stop()
+	}
+}
+
+func (e *Engine) TriggerRefresh() bool {
+	select {
+	case e.refreshCh <- struct{}{}:
+		return true
+	default:
+		return false
+	}
+}
+
 func (e *Engine) tick(ctx context.Context) {
+	e.mu.Lock()
+	if e.checking {
+		e.mu.Unlock()
+		return
+	}
+	e.checking = true
+	e.mu.Unlock()
+
+	defer func() {
+		e.mu.Lock()
+		e.checking = false
+		e.mu.Unlock()
+	}()
+
 	subOK := false
 	var subErr string
 	var newProxies []subscription.Proxy
+	var configRaw []byte
 
 	body, err := e.fetcher.Fetch(ctx)
 	if err != nil {
 		subErr = err.Error()
 		log.Printf("subscription fetch failed: %s (url=%s)", err, subscription.RedactURL(e.cfg.SubscriptionURL))
 	} else {
+		configRaw = body
 		parsed, perr := subscription.Parse(
 			body,
 			e.cfg.IncludeGroups,
@@ -93,6 +154,16 @@ func (e *Engine) tick(ctx context.Context) {
 			newProxies = parsed
 			subOK = true
 		}
+	}
+
+	if subOK && e.mihomo != nil {
+		startCtx, cancel := context.WithTimeout(ctx, e.cfg.MihomoStartupTimeout)
+		if err := e.mihomo.EnsureRunning(startCtx, configRaw); err != nil {
+			subErr = err.Error()
+			subOK = false
+			log.Printf("mihomo start/reload failed: %v", err)
+		}
+		cancel()
 	}
 
 	e.mu.Lock()
@@ -122,7 +193,10 @@ func (e *Engine) tick(ctx context.Context) {
 		return
 	}
 
-	results := e.checker.CheckAll(ctx, proxies)
+	checkCtx, cancel := context.WithTimeout(ctx, e.cfg.CheckTimeout*time.Duration(len(proxies)/e.cfg.CheckConcurrency+1))
+	defer cancel()
+
+	results := e.checker.CheckAll(checkCtx, proxies)
 	checkTime := time.Now()
 
 	online := 0
@@ -143,7 +217,9 @@ func (e *Engine) tick(ctx context.Context) {
 	e.metrics.Update(results, subLoadOK, subLast, checkTime)
 
 	if allDown {
-		log.Printf("warn: all %d proxies are down after TCP check", len(results))
+		log.Printf("warn: all %d proxies are down after %s check", len(results), e.checkMode)
+	} else {
+		log.Printf("check done: %d/%d up via %s", online, len(results), e.checkMode)
 	}
 }
 
@@ -168,5 +244,8 @@ func (e *Engine) Snapshot() Snapshot {
 		LastSubError:    e.lastSubError,
 		HasProxies:      e.hasProxies,
 		LastCheckFailed: e.lastCheckFailed,
+		CheckInterval:   e.cfg.CheckInterval,
+		CheckInProgress: e.checking,
+		CheckMode:       e.checkMode,
 	}
 }

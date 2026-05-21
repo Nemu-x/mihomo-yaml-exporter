@@ -23,7 +23,7 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	log.Printf("starting mihomo-yaml-exporter on %s (subscription=%s)", cfg.ListenAddr, subscription.RedactURL(cfg.SubscriptionURL))
+	log.Printf("starting mihomo-yaml-exporter on %s check_mode=%s (subscription=%s)", cfg.ListenAddr, cfg.CheckMode, subscription.RedactURL(cfg.SubscriptionURL))
 
 	reg := metrics.NewRegistry()
 	eng := engine.New(cfg, reg)
@@ -54,3 +54,4 @@ func main() {
 	cancel()
 	_ = httpSrv.Shutdown(context.Background())
 }
+

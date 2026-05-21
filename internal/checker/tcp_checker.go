@@ -2,8 +2,10 @@ package checker
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -13,6 +15,8 @@ import (
 type TCPChecker struct {
 	Timeout     time.Duration
 	Concurrency int
+	Retries     int
+	TLSPorts    map[int]struct{}
 }
 
 func (c *TCPChecker) CheckAll(ctx context.Context, proxies []subscription.Proxy) []subscription.CheckResult {
@@ -39,21 +43,65 @@ func (c *TCPChecker) CheckAll(ctx context.Context, proxies []subscription.Proxy)
 }
 
 func (c *TCPChecker) checkOne(ctx context.Context, p subscription.Proxy) subscription.CheckResult {
+	attempts := c.Retries + 1
+	if attempts < 1 {
+		attempts = 1
+	}
+
+	for i := 0; i < attempts; i++ {
+		if ctx.Err() != nil {
+			break
+		}
+		up, latency, err := c.probe(ctx, p)
+		if up {
+			return subscription.CheckResult{
+				Proxy:     p,
+				Up:        true,
+				LatencyMs: float64(latency),
+			}
+		}
+		_ = err
+		if i+1 < attempts {
+			select {
+			case <-ctx.Done():
+				return subscription.CheckResult{Proxy: p, Up: false}
+			case <-time.After(250 * time.Millisecond):
+			}
+		}
+	}
+	return subscription.CheckResult{Proxy: p, Up: false, LatencyMs: 0}
+}
+
+func (c *TCPChecker) probe(ctx context.Context, p subscription.Proxy) (bool, int64, error) {
 	addr := net.JoinHostPort(p.Server, fmt.Sprintf("%d", p.Port))
 	dialer := net.Dialer{Timeout: c.Timeout}
 
 	start := time.Now()
 	conn, err := dialer.DialContext(ctx, "tcp", addr)
-	latency := time.Since(start).Milliseconds()
-
-	res := subscription.CheckResult{
-		Proxy:     p,
-		Up:        err == nil,
-		LatencyMs: 0,
-	}
 	if err == nil {
 		_ = conn.Close()
-		res.LatencyMs = float64(latency)
+		return true, time.Since(start).Milliseconds(), nil
 	}
-	return res
+
+	if _, useTLS := c.TLSPorts[p.Port]; !useTLS {
+		return false, 0, err
+	}
+
+	host := p.Server
+	if strings.Contains(host, ":") {
+		if h, _, splitErr := net.SplitHostPort(host); splitErr == nil {
+			host = h
+		}
+	}
+
+	start = time.Now()
+	tlsConn, tlsErr := tls.DialWithDialer(&dialer, "tcp", addr, &tls.Config{
+		InsecureSkipVerify: true,
+		ServerName:         host,
+	})
+	if tlsErr == nil {
+		_ = tlsConn.Close()
+		return true, time.Since(start).Milliseconds(), nil
+	}
+	return false, 0, tlsErr
 }

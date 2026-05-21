@@ -23,10 +23,17 @@ type rawConfig struct {
 }
 
 type rawProxy struct {
-	Name   string       `yaml:"name"`
-	Type   string       `yaml:"type"`
-	Server string       `yaml:"server"`
-	Port   flexiblePort `yaml:"port"`
+	Name            string       `yaml:"name"`
+	Type            string       `yaml:"type"`
+	Server          string       `yaml:"server"`
+	Port            flexiblePort `yaml:"port"`
+	Network         string       `yaml:"network"`
+	Flow            string       `yaml:"flow"`
+	PacketEncoding  string       `yaml:"packet-encoding"`
+	UDP             bool         `yaml:"udp"`
+	TLS             bool         `yaml:"tls"`
+	Cipher          string       `yaml:"cipher"`
+	Plugin          string       `yaml:"plugin"`
 }
 
 type rawProxyGroup struct {
@@ -108,12 +115,21 @@ func Parse(data []byte, includeGroups, excludeGroups []string, excludeRe, includ
 			log.Printf("warn: skip proxy %q: missing server or port", name)
 			continue
 		}
-		byName[name] = Proxy{
-			Name:   name,
-			Type:   strings.TrimSpace(rp.Type),
-			Server: server,
-			Port:   rp.Port.value,
+		p := Proxy{
+			Name:           name,
+			Type:           strings.TrimSpace(rp.Type),
+			Server:         server,
+			Port:           rp.Port.value,
+			Network:        strings.TrimSpace(rp.Network),
+			Flow:           strings.TrimSpace(rp.Flow),
+			PacketEncoding: strings.TrimSpace(rp.PacketEncoding),
+			UDP:            rp.UDP,
+			TLS:            rp.TLS,
+			Cipher:         strings.TrimSpace(rp.Cipher),
+			Plugin:         strings.TrimSpace(rp.Plugin),
 		}
+		p.ProtocolLabel = BuildProtocolLabel(p)
+		byName[name] = p
 	}
 
 	groupDefs := make(map[string][]string)

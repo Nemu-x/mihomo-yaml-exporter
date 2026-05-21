@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mihomo Proxy Status</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0e13;
+      --panel: #141a22;
+      --panel2: #1b2430;
+      --text: #e8edf4;
+      --muted: #7d8da8;
+      --up: #22c55e;
+      --down: #ef4444;
+      --warn: #f59e0b;
+      --accent: #16a34a;
+      --border: rgba(255,255,255,0.07);
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    .wrap { max-width: 1440px; margin: 0 auto; padding: 1rem 1.25rem 2.5rem; }
+    .top { display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; margin-bottom: 0.75rem; }
+    h1 { margin: 0; font-size: 1.35rem; font-weight: 650; letter-spacing: -0.02em; }
+    .actions { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+    .btn {
+      border: none; border-radius: 10px; padding: 0.55rem 1rem; font-weight: 650; cursor: pointer;
+      background: var(--accent); color: #ecfdf5; font-size: 0.9rem;
+    }
+    .btn:disabled { opacity: 0.55; cursor: wait; }
+    .btn.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
+    .notice {
+      background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.28);
+      color: #fcd34d; padding: 0.7rem 1rem; border-radius: 10px; font-size: 0.84rem; line-height: 1.45;
+      margin-bottom: 0.85rem;
+    }
+    .notice strong { color: #fde68a; }
+    .stats { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 0.65rem; margin-bottom: 0.85rem; }
+    @media (max-width: 700px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+    .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1rem; }
+    .stat .label { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; }
+    .stat .value { font-size: 1.65rem; font-weight: 750; margin-top: 0.2rem; line-height: 1.1; }
+    .stat .value.up { color: var(--up); }
+    .stat .value.down { color: var(--down); }
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 0.55rem; align-items: center; margin-bottom: 0.85rem;
+      background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 0.65rem;
+    }
+    .toolbar input, .toolbar select {
+      background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+      border-radius: 8px; padding: 0.5rem 0.75rem; font-size: 0.9rem;
+    }
+    .toolbar input { flex: 1; min-width: 220px; }
+    .tabs, .ptabs { display: flex; gap: 0.35rem; flex-wrap: wrap; }
+    .tab, .ptab {
+      background: var(--panel2); border: 1px solid var(--border); color: var(--muted);
+      padding: 0.42rem 0.8rem; border-radius: 8px; cursor: pointer; font-weight: 600; font-size: 0.82rem;
+    }
+    .tab.active, .ptab.active { color: var(--text); border-color: rgba(34,197,94,0.45); background: rgba(34,197,94,0.12); }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0.7rem; }
+    .tile {
+      background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+      padding: 0.85rem 0.95rem; display: flex; flex-direction: column; gap: 0.5rem;
+      border-left: 3px solid transparent; transition: transform 0.12s ease;
+    }
+    .tile:hover { transform: translateY(-1px); }
+    .tile.up { border-left-color: var(--up); }
+    .tile.down { border-left-color: var(--down); }
+    .tile-head { display: flex; gap: 0.5rem; align-items: flex-start; justify-content: space-between; }
+    .tile-name { font-weight: 650; font-size: 0.92rem; line-height: 1.35; word-break: break-word; flex: 1; }
+    .badge { font-size: 0.68rem; font-weight: 800; padding: 0.22rem 0.5rem; border-radius: 6px; white-space: nowrap; }
+    .badge.up { background: rgba(34,197,94,0.18); color: var(--up); }
+    .badge.down { background: rgba(239,68,68,0.18); color: var(--down); }
+    .proto {
+      display: inline-block; font-size: 0.75rem; font-weight: 600; color: #a5b4fc;
+      background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.25);
+      padding: 0.2rem 0.5rem; border-radius: 6px; word-break: break-word;
+    }
+    .tile-meta { color: var(--muted); font-size: 0.78rem; line-height: 1.35; }
+    .tile-row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+    .latency { font-size: 1.15rem; font-weight: 750; }
+    .latency.up { color: var(--up); }
+    .bars { display: flex; gap: 3px; align-items: flex-end; height: 16px; }
+    .bars span { width: 4px; border-radius: 2px; background: var(--panel2); }
+    .bars span.on { background: var(--up); }
+    .bars.down span.on { background: var(--down); }
+    #error { color: var(--down); min-height: 1.1em; margin-bottom: 0.5rem; font-size: 0.88rem; }
+    .empty { color: var(--muted); text-align: center; padding: 2.5rem 1rem; grid-column: 1 / -1; }
+    .footer { color: var(--muted); font-size: 0.8rem; margin-top: 1rem; }
+    .footer a { color: #86efac; text-decoration: none; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <h1>⚡ Mihomo YAML Exporter</h1>
+      <div class="actions">
+        <span id="countdown" class="btn secondary" style="cursor:default;min-width:52px;text-align:center;">—</span>
+        <button class="btn" id="refreshBtn" type="button" title="Force check now (R)">↻ Refresh</button>
+      </div>
+    </div>
+    <div class="notice" id="notice">Loading…</div>
+    <div id="error"></div>
+    <div class="stats" id="stats"></div>
+    <div class="toolbar">
+      <input type="search" id="search" placeholder="Search name, server, protocol…" autocomplete="off">
+      <select id="sort" title="Sort">
+        <option value="status">Sort: status</option>
+        <option value="latency">Sort: latency</option>
+        <option value="name">Sort: name</option>
+      </select>
+      <div class="tabs">
+        <button class="tab active" data-filter="all" type="button">All</button>
+        <button class="tab" data-filter="online" type="button">Online</button>
+        <button class="tab" data-filter="offline" type="button">Offline</button>
+      </div>
+    </div>
+    <div class="ptabs" id="protoTabs" style="margin-bottom:0.75rem;"></div>
+    <div class="grid" id="grid"></div>
+    <p class="footer">Keyboard: <kbd>R</kbd> refresh · <a href="/metrics">Prometheus</a> · <a href="/health">health JSON</a></p>
+  </div>
+  <script>
+    var state = { filter: 'all', proto: 'all', search: '', sort: 'status', proxies: [], health: {}, intervalSec: 60, nextRefresh: 0 };
+
+    function esc(s) {
+      var d = document.createElement('div');
+      d.textContent = s == null ? '' : String(s);
+      return d.innerHTML;
+    }
+
+    function signalBars(ms, up) {
+      var n = 0;
+      if (up) {
+        if (ms < 120) n = 5; else if (ms < 250) n = 4; else if (ms < 400) n = 3; else if (ms < 700) n = 2; else n = 1;
+      }
+      var html = '<div class="bars' + (up ? '' : ' down') + '">';
+      for (var i = 1; i <= 5; i++) html += '<span class="' + (i <= n ? 'on' : '') + '"></span>';
+      return html + '</div>';
+    }
+
+    function filtered() {
+      return state.proxies.filter(function(p) {
+        if (state.filter === 'online' && !p.up) return false;
+        if (state.filter === 'offline' && p.up) return false;
+        if (state.proto !== 'all') {
+          var pl = (p.protocol_label || p.type || '').toLowerCase();
+          if (pl.indexOf(state.proto) === -1 && (p.type || '').toLowerCase() !== state.proto) return false;
+        }
+        if (state.search) {
+          var q = state.search.toLowerCase();
+          var blob = [p.name, p.server, p.type, p.protocol_label, p.network, p.flow, (p.groups || []).join(' ')].join(' ').toLowerCase();
+          if (blob.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+    }
+
+    function sortList(list) {
+      list = list.slice();
+      if (state.sort === 'name') {
+        list.sort(function(a, b) { return a.name.localeCompare(b.name); });
+      } else if (state.sort === 'latency') {
+        list.sort(function(a, b) {
+          if (a.up !== b.up) return a.up ? -1 : 1;
+          return (a.latency_ms || 99999) - (b.latency_ms || 99999);
+        });
+      } else {
+        list.sort(function(a, b) {
+          if (a.up !== b.up) return a.up ? -1 : 1;
+          return a.name.localeCompare(b.name);
+        });
+      }
+      return list;
+    }
+
+    function renderProtoTabs() {
+      var types = {};
+      state.proxies.forEach(function(p) {
+        var t = (p.type || 'other').toLowerCase();
+        types[t] = (types[t] || 0) + 1;
+      });
+      var keys = Object.keys(types).sort();
+      var html = '<button class="ptab' + (state.proto === 'all' ? ' active' : '') + '" data-proto="all" type="button">All types</button>';
+      keys.forEach(function(k) {
+        html += '<button class="ptab' + (state.proto === k ? ' active' : '') + '" data-proto="' + esc(k) + '" type="button">' +
+          esc(k) + ' (' + types[k] + ')</button>';
+      });
+      document.getElementById('protoTabs').innerHTML = html;
+      document.querySelectorAll('.ptab').forEach(function(el) {
+        el.addEventListener('click', function() {
+          document.querySelectorAll('.ptab').forEach(function(t) { t.classList.remove('active'); });
+          el.classList.add('active');
+          state.proto = el.getAttribute('data-proto');
+          renderGrid();
+        });
+      });
+    }
+
+    function renderStats() {
+      var h = state.health;
+      var total = h.proxies_total || 0;
+      var online = h.proxies_online || 0;
+      var offline = total - online;
+      var avg = 0, n = 0;
+      state.proxies.forEach(function(p) {
+        if (p.up && p.latency_ms > 0) { avg += p.latency_ms; n++; }
+      });
+      avg = n ? Math.round(avg / n) : 0;
+      document.getElementById('stats').innerHTML =
+        '<div class="stat"><div class="label">Total</div><div class="value">' + total + '</div></div>' +
+        '<div class="stat"><div class="label">Online</div><div class="value up">' + online + '</div></div>' +
+        '<div class="stat"><div class="label">Offline</div><div class="value down">' + offline + '</div></div>' +
+        '<div class="stat"><div class="label">Avg latency</div><div class="value">' + (avg ? avg + 'ms' : '—') + '</div></div>';
+    }
+
+    function renderGrid() {
+      var list = sortList(filtered());
+      if (!list.length) {
+        document.getElementById('grid').innerHTML = '<div class="empty">No proxies match filters</div>';
+        return;
+      }
+      document.getElementById('grid').innerHTML = list.map(function(p) {
+        var lat = p.up ? (Math.round(p.latency_ms) + 'ms') : 'n/a';
+        var proto = p.protocol_label || p.type || 'unknown';
+        var host = esc(p.server) + ':' + p.port;
+        return '<div class="tile ' + (p.up ? 'up' : 'down') + '">' +
+          '<div class="tile-head"><div class="tile-name">' + esc(p.name) + '</div>' +
+          '<span class="badge ' + (p.up ? 'up' : 'down') + '">' + (p.up ? 'ONLINE' : 'OFFLINE') + '</span></div>' +
+          '<div><span class="proto">' + esc(proto) + '</span></div>' +
+          '<div class="tile-meta">' + host + '</div>' +
+          '<div class="tile-row"><span class="latency ' + (p.up ? 'up' : '') + '">' + lat + '</span>' + signalBars(p.latency_ms, p.up) + '</div>' +
+          (p.groups && p.groups.length ? '<div class="tile-meta">' + esc(p.groups.join(' · ')) + '</div>' : '') +
+          '</div>';
+      }).join('');
+    }
+
+    function render() {
+      renderStats();
+      renderProtoTabs();
+      renderGrid();
+      var btn = document.getElementById('refreshBtn');
+      btn.disabled = !!state.health.checking;
+      btn.textContent = state.health.checking ? '↻ Checking…' : '↻ Refresh';
+    }
+
+    function loadData() {
+      return Promise.all([
+        fetch('/health').then(function(r) { return r.json(); }),
+        fetch('/proxies').then(function(r) { return r.json(); }),
+        fetch('/api/meta').then(function(r) { return r.json(); }).catch(function() { return {}; })
+      ]).then(function(parts) {
+        state.health = parts[0];
+        state.proxies = parts[1];
+        if (parts[2].check_interval_sec) state.intervalSec = parts[2].check_interval_sec;
+        var note = parts[2].check_note || '';
+        if (parts[2].check_method) note += ' Method: ' + parts[2].check_method + '.';
+        document.getElementById('notice').innerHTML = '<strong>Note:</strong> ' + esc(note);
+        document.getElementById('error').textContent = state.health.error || '';
+        state.nextRefresh = Date.now() + state.intervalSec * 1000;
+        render();
+      }).catch(function(e) {
+        document.getElementById('error').textContent = 'Failed to load: ' + e;
+      });
+    }
+
+    function forceRefresh() {
+      fetch('/api/refresh', { method: 'POST' }).then(function() {
+        var n = 0;
+        var t = setInterval(function() {
+          loadData();
+          n++;
+          if (!state.health.checking || n > 40) clearInterval(t);
+        }, 600);
+      });
+    }
+
+    document.getElementById('refreshBtn').addEventListener('click', forceRefresh);
+    document.getElementById('search').addEventListener('input', function(e) {
+      state.search = e.target.value.trim();
+      renderGrid();
+    });
+    document.getElementById('sort').addEventListener('change', function(e) {
+      state.sort = e.target.value;
+      renderGrid();
+    });
+    document.querySelectorAll('.tab').forEach(function(el) {
+      el.addEventListener('click', function() {
+        document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+        el.classList.add('active');
+        state.filter = el.getAttribute('data-filter');
+        renderGrid();
+      });
+    });
+    document.addEventListener('keydown', function(e) {
+      if (e.key === 'r' || e.key === 'R') forceRefresh();
+    });
+    setInterval(function() {
+      var left = Math.max(0, Math.ceil((state.nextRefresh - Date.now()) / 1000));
+      document.getElementById('countdown').textContent = left + 's';
+      if (left <= 0) loadData();
+    }, 1000);
+    loadData();
+  </script>
+</body>
+</html>

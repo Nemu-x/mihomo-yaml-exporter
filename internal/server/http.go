@@ -24,6 +24,8 @@ func (s *HTTPServer) Handler() http.Handler {
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/proxies", s.handleProxies)
+	mux.HandleFunc("/api/meta", s.handleMeta)
+	mux.HandleFunc("/api/refresh", s.handleRefresh)
 	return mux
 }
 
@@ -48,6 +50,7 @@ func (s *HTTPServer) handleHealth(w http.ResponseWriter, r *http.Request) {
 		"status":          status,
 		"proxies_total":   snap.ProxiesTotal,
 		"proxies_online":  snap.ProxiesOnline,
+		"checking":        snap.CheckInProgress,
 	}
 	if !snap.LastCheck.IsZero() {
 		resp["last_check"] = snap.LastCheck.UTC().Format(time.RFC3339)
@@ -67,7 +70,12 @@ func (s *HTTPServer) handleProxies(w http.ResponseWriter, r *http.Request) {
 	for _, res := range snap.Results {
 		out = append(out, map[string]interface{}{
 			"name":       res.Proxy.Name,
-			"type":       res.Proxy.Type,
+			"type":            res.Proxy.Type,
+			"protocol_label":  res.Proxy.ProtocolLabel,
+			"network":         res.Proxy.Network,
+			"flow":            res.Proxy.Flow,
+			"tls":             res.Proxy.TLS,
+			"udp":             res.Proxy.UDP,
 			"server":     res.Proxy.Server,
 			"port":       res.Proxy.Port,
 			"groups":     res.Proxy.Groups,
@@ -78,4 +86,43 @@ func (s *HTTPServer) handleProxies(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(out)
+}
+
+func (s *HTTPServer) handleMeta(w http.ResponseWriter, r *http.Request) {
+	snap := s.eng.Snapshot()
+	intervalSec := int(snap.CheckInterval.Seconds())
+	if intervalSec < 1 {
+		intervalSec = 60
+	}
+
+	method := "tcp_with_tls_fallback"
+	note := "TCP/TLS reachability from this host. ICMP is not used."
+	if snap.CheckMode == "mihomo" {
+		method = "mihomo_delay_test"
+		note = "Checks use Mihomo external-controller delay test (same idea as the app)."
+	}
+
+	resp := map[string]interface{}{
+		"check_interval_sec": intervalSec,
+		"check_method":       method,
+		"check_mode":         snap.CheckMode,
+		"check_note":         note,
+		"check_icmp":         false,
+	}
+	if !snap.LastCheck.IsZero() {
+		resp["last_check"] = snap.LastCheck.UTC().Format(time.RFC3339)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (s *HTTPServer) handleRefresh(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	queued := s.eng.TriggerRefresh()
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"queued": queued})
 }

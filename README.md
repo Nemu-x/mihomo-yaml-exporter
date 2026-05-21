@@ -41,9 +41,11 @@ docker run -d \
 |----------|---------|-------------|
 | `SUBSCRIPTION_URL` | *(required)* | Mihomo/Clash YAML URL |
 | `LISTEN_ADDR` | `0.0.0.0:9123` | HTTP listen address |
+| `CHECK_MODE` | `mihomo` | `mihomo` (delay-test) or `tcp` |
 | `CHECK_INTERVAL` | `60s` | Subscription refresh and check interval |
-| `CHECK_TIMEOUT` | `5s` | TCP dial timeout per proxy |
-| `CHECK_CONCURRENCY` | `20` | Max parallel TCP checks |
+| `CHECK_TIMEOUT` | `10s` | Per-proxy check timeout |
+| `CHECK_CONCURRENCY` | `5` | Max parallel checks |
+| `MIHOMO_DELAY_URL` | gstatic generate_204 | Delay-test target URL |
 | `INCLUDE_GROUPS` | *(empty = all proxies)* | Comma-separated proxy-group names |
 | `EXCLUDE_GROUPS` | `DIRECT,REJECT,GLOBAL` | Groups ignored when building proxy list |
 | `EXCLUDE_PROXY_REGEX` | *(empty)* | Drop proxies whose **name** matches |
@@ -111,13 +113,10 @@ EXCLUDE_GROUPS=🚫 No VPN,DIRECT,REJECT,GLOBAL
 
 Per-region groups (e.g. `🇩🇪 Germany (all servers)`) can be added if you want regional checks.
 
-## Limitations (MVP)
+## Check modes
 
-- TCP connect only (no VLESS/Reality handshake, no Mihomo core)
-
-## Roadmap (v2)
-
-- Run Mihomo with `external-controller` and export real delay-test results via API
+- **mihomo** (default): embedded Mihomo with external-controller, delay-test per proxy (same idea as the app).
+- **tcp**: TCP/TLS reachability to server:port only (CHECK_MODE=tcp).
 
 ## License
 
