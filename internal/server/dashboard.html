@@ -30,12 +30,6 @@
     }
     .btn:disabled { opacity: 0.55; cursor: wait; }
     .btn.secondary { background: var(--panel2); color: var(--text); border: 1px solid var(--border); }
-    .notice {
-      background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.28);
-      color: #fcd34d; padding: 0.7rem 1rem; border-radius: 10px; font-size: 0.84rem; line-height: 1.45;
-      margin-bottom: 0.85rem;
-    }
-    .notice strong { color: #fde68a; }
     .stats { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 0.65rem; margin-bottom: 0.85rem; }
     @media (max-width: 700px) { .stats { grid-template-columns: repeat(2, 1fr); } }
     .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 0.9rem 1rem; }
@@ -100,7 +94,6 @@
         <button class="btn" id="refreshBtn" type="button" title="Force check now (R)">↻ Refresh</button>
       </div>
     </div>
-    <div class="notice" id="notice">Loading…</div>
     <div id="error"></div>
     <div class="stats" id="stats"></div>
     <div class="toolbar">
@@ -253,9 +246,6 @@
         state.health = parts[0];
         state.proxies = parts[1];
         if (parts[2].check_interval_sec) state.intervalSec = parts[2].check_interval_sec;
-        var note = parts[2].check_note || '';
-        if (parts[2].check_method) note += ' Method: ' + parts[2].check_method + '.';
-        document.getElementById('notice').innerHTML = '<strong>Note:</strong> ' + esc(note);
         document.getElementById('error').textContent = state.health.error || '';
         state.nextRefresh = Date.now() + state.intervalSec * 1000;
         render();

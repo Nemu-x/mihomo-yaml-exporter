@@ -2,11 +2,14 @@ package mihomo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"os/exec"
+	"runtime"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -86,6 +89,9 @@ func (p *Process) waitReady(ctx context.Context) error {
 		if err := p.client.Ping(ctx); err == nil {
 			return nil
 		}
+		if !p.processAlive() {
+			return errors.New("mihomo exited (CPU may lack x86-64-v3; use compatible binary in image)")
+		}
 		if time.Now().After(deadline) {
 			return fmt.Errorf("mihomo controller not ready at %s", p.controller)
 		}
@@ -115,4 +121,16 @@ func (p *Process) stopLocked() error {
 
 func (p *Process) Client() *Client {
 	return p.client
+}
+
+func (p *Process) processAlive() bool {
+	if p.cmd == nil || p.cmd.Process == nil {
+		return false
+	}
+	switch runtime.GOOS {
+	case "linux", "darwin", "freebsd":
+		return p.cmd.Process.Signal(syscall.Signal(0)) == nil
+	default:
+		return true
+	}
 }
